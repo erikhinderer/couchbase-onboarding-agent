@@ -4,7 +4,8 @@ A Dockerized AI agent for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**,
 Cassandra**, and **Microsoft Azure Cosmos DB** into **Couchbase Server (Enterprise Edition)**
 or **Couchbase Capella**.
 
-<img width="1467" height="805" alt="image" src="https://github.com/user-attachments/assets/ba142952-2715-4b84-8b91-43b5a875a52c" />
+<img width="1470" height="812" alt="image" src="https://github.com/user-attachments/assets/befdf19c-0a76-468d-9b1a-899a37f3cfb1" />
+
 
 ## Quick start
 
