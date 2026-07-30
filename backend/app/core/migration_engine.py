@@ -370,6 +370,7 @@ class MigrationEngine:
     async def _verify(self, record: MigrationRecord, loader: CouchbaseLoader, containers: list[str]) -> None:
         cluster = loader.client.connect()
         dest_total = 0
+        failed_containers: list[str] = []
         for container in containers:
             scope, collection = loader._target_for(container)  # noqa: SLF001
             try:
@@ -380,15 +381,29 @@ class MigrationEngine:
                 )
                 dest_total += next(iter(res), 0)
             except Exception as exc:  # noqa: BLE001
+                failed_containers.append(f"{scope}.{collection}")
                 self._log(record, f"Verification query failed for {scope}.{collection}: {exc}")
 
         src_total = record.stats.docs_migrated + record.stats.mutations_replicated
-        drift = abs(src_total - dest_total)
-        self._log(
-            record,
-            f"Verification: documents written by this migration={src_total}, "
-            f"found in destination={dest_total} (drift={drift}).",
-        )
+        if failed_containers:
+            # A query failure (e.g. the primary index isn't online yet) means
+            # dest_total is an undercount, not a real measurement -- reporting
+            # it as "drift" would claim documents are missing when verification
+            # simply couldn't run. Say so explicitly instead of implying data loss.
+            self._log(
+                record,
+                f"Verification incomplete: could not query {len(failed_containers)} of "
+                f"{len(containers)} destination collection(s) ({', '.join(failed_containers)}). "
+                f"Document counts cannot be confirmed for {'these' if len(failed_containers) > 1 else 'this'} "
+                "container(s); the migration itself is unaffected.",
+            )
+        else:
+            drift = abs(src_total - dest_total)
+            self._log(
+                record,
+                f"Verification: documents written by this migration={src_total}, "
+                f"found in destination={dest_total} (drift={drift}).",
+            )
 
     # -- rollback -------------------------------------------------------------
 

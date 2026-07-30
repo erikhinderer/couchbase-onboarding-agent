@@ -13,7 +13,12 @@ from typing import Any
 
 from couchbase.auth import PasswordAuthenticator
 from couchbase.cluster import Cluster
-from couchbase.exceptions import CouchbaseException, ScopeAlreadyExistsException, CollectionAlreadyExistsException
+from couchbase.exceptions import (
+    CouchbaseException,
+    ScopeAlreadyExistsException,
+    CollectionAlreadyExistsException,
+    QueryIndexAlreadyExistsException,
+)
 from couchbase.management.collections import CollectionSpec
 from couchbase.options import ClusterOptions
 import requests
@@ -213,8 +218,9 @@ class CouchbaseClusterClient:
 
     def ensure_scope_and_collection(self, bucket: str, scope: str, collection: str) -> None:
         """Idempotently create `scope`/`collection` in `bucket` via the SDK's
-        CollectionManager. Names must already be sanitized (see
-        sanitize_couchbase_name) before reaching here."""
+        CollectionManager, plus a supporting index for the migration-tracking
+        query. Names must already be sanitized (see sanitize_couchbase_name)
+        before reaching here."""
         cluster = self.connect()
         mgr = cluster.bucket(bucket).collections()
         if scope != "_default":
@@ -226,3 +232,36 @@ class CouchbaseClusterClient:
             mgr.create_collection(CollectionSpec(collection_name=collection, scope_name=scope))
         except CollectionAlreadyExistsException:
             pass
+
+        # Every migration write is tagged with `_migration.migration_id` (see
+        # CouchbaseLoader._upsert_one), and both post-migration verification
+        # (MigrationEngine._verify) and rollback (CouchbaseLoader.purge_migration)
+        # query on that field via N1QL. A freshly created collection has no
+        # index at all, so without this those queries fail outright with
+        # QueryIndexNotFoundException -- which _verify swallows and reports as
+        # 100% drift even though the actual writes succeeded, and which
+        # purge_migration swallows as a no-op rollback that silently deletes
+        # nothing. A secondary index on just this field (rather than a
+        # primary index) is what's actually needed here and is the
+        # Couchbase-recommended choice for a bucket destined for production
+        # use -- leaving a primary index in place invites unrestricted
+        # full-keyspace scans and is generally something you'd want to drop
+        # before go-live, not hand to the customer by default. One fixed
+        # index name per collection keeps this idempotent even when multiple
+        # migrations target the same destination collection (see
+        # purge_migration's docstring). Created here, before any documents
+        # are written, so it's already online by the time either query runs.
+        try:
+            cluster.bucket(bucket).scope(scope).collection(collection).query_indexes().create_index(
+                "idx_migration_id", ["_migration.migration_id"], ignore_if_exists=True
+            )
+        except QueryIndexAlreadyExistsException:
+            pass
+        except CouchbaseException as exc:
+            # Don't fail the migration over this -- the data load itself
+            # doesn't need the index, only verification/rollback do, and both
+            # already degrade to a logged warning rather than a crash if it's
+            # missing. A cluster with the Query/Index service unavailable
+            # (rare, but possible on minimal on-prem deployments) should still
+            # be able to migrate data.
+            logger.warning("Could not create index on %s.%s.%s: %s", bucket, scope, collection, exc)
