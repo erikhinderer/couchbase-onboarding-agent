@@ -5,10 +5,9 @@ Cassandra**, **Microsoft Azure Cosmos DB**, or another **Couchbase cluster** (**
 Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Enterprise Edition)**
 or **Couchbase Capella**.
 
-Couchbase-to-Couchbase migrations are a deliberate architectural exception: they use Couchbase's own native SDK tools --
-Other platforms use a Connector on per-document pipeline.
-[`cbbackupmgr`](#connector-implementation-depth) for a one-time full load, XDCR for continuous
-replication, or both for hybrid. See "Why Couchbase sources are different" below.
+Couchbase-to-Couchbase migrations are a deliberate architectural exception: they use Couchbase's own native SDK tools -- [`cbbackupmgr`](#connector-implementation-depth) for a one-time full load, XDCR for continuous replication, or both for hybrid. See "Why Couchbase sources are different" below.
+
+Other platforms use Connectors on per-document pipeline.
 
 <img width="1470" height="812" alt="image" src="https://github.com/user-attachments/assets/befdf19c-0a76-468d-9b1a-899a37f3cfb1" />
 
