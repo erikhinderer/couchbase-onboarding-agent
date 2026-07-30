@@ -6,7 +6,7 @@ Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Ente
 or **Couchbase Capella**.
 
 Couchbase-to-Couchbase migrations are a deliberate architectural exception: instead of this
-app's generic per-document pipeline, they use Couchbase's own native tools --
+app's custom per-document pipeline, they use Couchbase's own native tools --
 [`cbbackupmgr`](#connector-implementation-depth) for a one-time full load, XDCR for continuous
 replication, or both for hybrid. See "Why Couchbase sources are different" below.
 
