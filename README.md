@@ -1,11 +1,9 @@
 # Couchbase Onboarding Agent
-
-<img width="2940" height="1624" alt="image" src="https://github.com/user-attachments/assets/d4987e35-57f2-4a16-b5ae-db1461829bfc" />
-
 A Dockerized AI agent with UI for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**, **Apache
 Cassandra**, **Microsoft Azure Cosmos DB**, or another **Couchbase cluster** (**Community
 Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Enterprise Edition)**
 or **Couchbase Capella**.
+<img width="1470" height="811" alt="image" src="https://github.com/user-attachments/assets/917b19ef-0db2-44f5-9dae-6d6c764b1027" />
 
 Couchbase-to-Couchbase migrations are a deliberate architectural exception: they use Couchbase's own native SDK tools -- [`cbbackupmgr`](#connector-implementation-depth) for a one-time full load, XDCR for continuous replication, or both for hybrid. See "Why Couchbase sources are different" below.
 
