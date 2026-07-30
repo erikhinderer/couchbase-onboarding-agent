@@ -144,34 +144,3 @@ textarea:focus {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-
-.cb-flow-dot {
-  position: absolute;
-  top: 50%;
-  left: 0%;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--cb-green);
-  box-shadow: 0 0 6px 1px var(--cb-green);
-  transform: translate(-50%, -50%);
-  animation: cb-flow 1.3s linear infinite;
-  opacity: 0;
-}
-
-@keyframes cb-flow {
-  0% {
-    left: 0%;
-    opacity: 0;
-  }
-  8% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 1;
-  }
-  100% {
-    left: 100%;
-    opacity: 0;
-  }
-}

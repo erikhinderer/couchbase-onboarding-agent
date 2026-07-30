@@ -66,8 +66,6 @@ export default function MigrationDetailPage() {
           destLabel={plan.destination.label}
           bucket={plan.destination_bucket}
           phase={phase}
-          throughputLabel={`${(CONTINUOUS_PHASES.has(phase) ? stats.mutations_per_sec : stats.throughput_docs_per_sec).toFixed(1)}/s`}
-          destTopology={record.validation_report?.dest_topology}
         />
       </div>
 
