@@ -1,5 +1,7 @@
 # Couchbase Onboarding Agent
 
+<img width="2940" height="1624" alt="image" src="https://github.com/user-attachments/assets/d4987e35-57f2-4a16-b5ae-db1461829bfc" />
+
 A Dockerized AI agent with UI for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**, **Apache
 Cassandra**, **Microsoft Azure Cosmos DB**, or another **Couchbase cluster** (**Community
 Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Enterprise Edition)**
@@ -41,9 +43,6 @@ eight source systems.
   being planned, actively validating, mid-transfer, replicating, or already rolled back -- every
   question is grounded in that specific migration's live phase, stats, and validation report, so
   answers reference what's actually happening rather than generic advice.
-
-<img width="1470" height="812" alt="image" src="https://github.com/user-attachments/assets/befdf19c-0a76-468d-9b1a-899a37f3cfb1" />
-
 
 ## Quick start
 
