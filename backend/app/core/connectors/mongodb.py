@@ -179,23 +179,44 @@ class MongoDBConnector(SourceConnector):
             def _produce(q: queue.Queue, container=container) -> None:
                 try:
                     coll = db[container]
-                    batch: list[SourceDocument] = []
-                    cursor = coll.find({}, no_cursor_timeout=True).batch_size(batch_size)
-                    try:
-                        for raw in cursor:
-                            doc_id = str(raw.get("_id"))
-                            body = _transform_doc(raw)
-                            body["_id"] = doc_id
-                            batch.append(SourceDocument(
-                                key=make_key(container, doc_id), body=body, container=container,
-                            ))
-                            if len(batch) >= batch_size:
+                    # Atlas's free/shared (and some serverless) tiers reject
+                    # no_cursor_timeout cursors outright (code 8000, AtlasError),
+                    # failing on the very first find/getMore before any documents
+                    # are returned. Prefer no_cursor_timeout (needed on self-managed
+                    # deployments so a slow sink doesn't let the server reap the
+                    # cursor mid-scan), but fall back transparently when Atlas
+                    # refuses it -- nothing has been queued yet at that point, so
+                    # retrying from scratch is safe.
+                    no_cursor_timeout = True
+                    while True:
+                        batch: list[SourceDocument] = []
+                        cursor = coll.find({}, no_cursor_timeout=no_cursor_timeout).batch_size(batch_size)
+                        try:
+                            for raw in cursor:
+                                doc_id = str(raw.get("_id"))
+                                body = _transform_doc(raw)
+                                body["_id"] = doc_id
+                                batch.append(SourceDocument(
+                                    key=make_key(container, doc_id), body=body, container=container,
+                                ))
+                                if len(batch) >= batch_size:
+                                    q.put(batch)
+                                    batch = []
+                            if batch:
                                 q.put(batch)
-                                batch = []
-                    finally:
-                        cursor.close()
-                    if batch:
-                        q.put(batch)
+                            break
+                        except PyMongoError as exc:
+                            if no_cursor_timeout and "noTimeout cursors are disallowed" in str(exc):
+                                logger.warning(
+                                    "MongoDB source '%s' rejected no_cursor_timeout on collection "
+                                    "'%s' (Atlas free/shared-tier restriction); retrying without it.",
+                                    self.config.label, container,
+                                )
+                                no_cursor_timeout = False
+                                continue
+                            raise
+                        finally:
+                            cursor.close()
                 except Exception as exc:  # noqa: BLE001
                     q.put(SourceConnectorError(f"MongoDB extraction failed for collection '{container}': {exc}"))
                 finally:

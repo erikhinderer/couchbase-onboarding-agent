@@ -1,4 +1,12 @@
-export type SourceType = "mongodb" | "dynamodb" | "redis" | "cassandra" | "cosmosdb";
+export type SourceType =
+  | "mongodb"
+  | "dynamodb"
+  | "redis"
+  | "cassandra"
+  | "cosmosdb"
+  | "couchbase"
+  | "couchbase_enterprise"
+  | "couchbase_capella";
 
 export type MigrationStrategy = "full_load" | "cdc_live" | "full_load_and_cdc";
 
@@ -28,6 +36,7 @@ export interface SourceConnectionConfig {
   password?: string;
   use_tls?: boolean;
   ca_cert_path?: string;
+  couchbase_external_network?: boolean;
   redis_db_index?: number;
   cassandra_port?: number;
   cassandra_datacenter?: string;
@@ -179,4 +188,11 @@ export interface AgentChatResponse {
   reply: string;
   recalled_memories: string[];
   suggested_actions: string[];
+}
+
+export type AgentHealthState = "ready" | "waiting" | "error";
+
+export interface AgentStatusResponse {
+  status: AgentHealthState;
+  detail: string;
 }

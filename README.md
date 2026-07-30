@@ -1,8 +1,14 @@
 # Couchbase Onboarding Agent
 
 A Dockerized AI agent with UI for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**, **Apache
-Cassandra**, and **Microsoft Azure Cosmos DB** into **Couchbase Server (Enterprise Edition)**
+Cassandra**, **Microsoft Azure Cosmos DB**, or another **Couchbase cluster** (**Community
+Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Enterprise Edition)**
 or **Couchbase Capella**.
+
+Couchbase-to-Couchbase migrations are a deliberate architectural exception: instead of this
+app's generic per-document pipeline, they use Couchbase's own native tools --
+[`cbbackupmgr`](#connector-implementation-depth) for a one-time full load, XDCR for continuous
+replication, or both for hybrid. See "Why Couchbase sources are different" below.
 
 <img width="1470" height="812" alt="image" src="https://github.com/user-attachments/assets/befdf19c-0a76-468d-9b1a-899a37f3cfb1" />
 
@@ -31,14 +37,14 @@ Enterprise Edition memory store -- this can take a few minutes; subsequent start
 | Component | Tech | Purpose |
 |---|---|---|
 | `frontend/` | React + TypeScript + Vite | Dark-mode UI: setup wizard, topology diagram, live stats dashboard, agent chat |
-| `backend/` | FastAPI (Python) + five source SDKs + Couchbase SDK | REST + WebSocket API, validation, extract/transform/load pipeline, CDC |
+| `backend/` | FastAPI (Python) + five source SDKs (pymongo, boto3, redis, cassandra-driver, azure-cosmos) + the Couchbase SDK (for the destination and for CE/EE/Capella as a source) + `cbbackupmgr`/XDCR for Couchbase-to-Couchbase moves | REST + WebSocket API, validation, extract/transform/load pipeline, CDC |
 | `qwen-service/` | Ollama serving Qwen 3, 8B | Local LLM for the in-app assistant and memory embeddings -- nothing leaves the Docker network |
 | `couchbase-memory/` | Couchbase Enterprise Edition (free, dev/test license) | Agent long-term memory (past validations, decisions, bottleneck findings), recalled via native vector search |
 | `scripts/init_memory.py` | Python | One-shot bootstrap: creates the memory bucket/scope/collection and the FTS vector index |
 
 > **`couchbase-memory` is not a migration source or destination.** It's the onboarding
 > agent's own memory store. Your actual source database (MongoDB/DynamoDB/Redis/
-> Cassandra/Cosmos DB) and destination Couchbase cluster or Capella project are external
+> Cassandra/Cosmos DB/Couchbase) and destination Couchbase cluster or Capella project are external
 > systems, configured per-migration in the wizard -- nothing about them lives in this
 > Docker Compose stack. See the sibling `couchbase-migration-agent`'s README for the
 > Enterprise Free license terms that apply to the `couchbase:enterprise-*` image used here.
@@ -72,11 +78,11 @@ source *before* touching it, because its migration path (`cbbackupmgr backup` /
 `restore` / XDCR) can and does modify the source's replication topology and is built around
 a tool that can also restore the source from that same archive if something goes wrong.
 
-**Every connector in this project is strictly read-only against the source.** Nothing here
-ever writes to, deletes from, or reconfigures MongoDB, DynamoDB, Redis, Cassandra, or Cosmos
-DB. That makes a pre-migration backup-and-restore-on-failure step redundant -- there's
-nothing to protect the source *from*, and re-running extraction is always safe (Couchbase
-upserts are naturally idempotent). Consequently:
+**Every non-Couchbase connector in this project is strictly read-only against the source.**
+Nothing here ever writes to, deletes from, or reconfigures MongoDB, DynamoDB, Redis, Cassandra,
+or Cosmos DB. That makes a pre-migration backup-and-restore-on-failure step redundant for those
+five sources -- there's nothing to protect the source *from*, and re-running extraction is always
+safe (Couchbase upserts are naturally idempotent). Consequently:
 
 - The wizard has one fewer step than the sibling project's (no "Backup" step between
   "Validate" and "Review & Approve").
@@ -84,6 +90,75 @@ upserts are naturally idempotent). Consequently:
   if requested, delete every document this migration wrote to Couchbase (tagged via each
   document's `_migration.migration_id` field). The source is never touched, so there is
   nothing to restore there.
+
+**Couchbase sources are the one deliberate exception to this invariant.** A
+Couchbase-to-Couchbase migration doesn't go through the generic connector/loader pipeline at
+all -- it routes to `backend/app/core/couchbase_native.py`, which shells out to `cbbackupmgr`
+and/or drives XDCR through the source cluster's REST API, the same tools the sibling
+`couchbase-migration-agent` uses. That means, for Couchbase sources only:
+
+- **It is not read-only against the source.** `cbbackupmgr backup` reads via the source's own
+  backup mechanism (not a concern), but setting up XDCR *does* modify the source cluster's
+  replication topology (it creates a remote-cluster reference and a replication on the
+  source), the same tradeoff the sibling project accepts.
+- **There's no per-document `_migration` tag and no document-level rollback.** cbbackupmgr and
+  XDCR move data at the bucket/collection level, not document-by-document, so verification is
+  destination item-count-based rather than tag-based, and "rollback" for a native migration
+  means tearing down the XDCR replication (and, if requested, the destination bucket) rather
+  than purging tagged documents.
+- **Continuous/hybrid replication (XDCR) is only wired up for a self-managed Enterprise
+  Edition source.** Community Edition has no XDCR at all. A Capella source can only do a
+  one-time `cbbackupmgr` load today -- XDCR-from-Capella isn't implemented (see
+  "Connector implementation depth" below for why).
+- **XDCR requires the source and destination buckets to have the same vBucket count --
+  see "XDCR requires matching vBucket counts" below.**
+- Verified against a live self-managed Enterprise Edition source and a live Capella
+  destination on 2026-07-30: `cbbackupmgr backup`/`restore` (one-time full load) completed
+  successfully end-to-end. Continuous/hybrid (XDCR) replication itself is still pending a
+  clean live run -- the first attempts surfaced the vBucket-count mismatch documented below,
+  now fixed.
+
+### XDCR requires matching vBucket counts
+
+This one is easy to hit by surprise and worth calling out on its own: XDCR refuses to
+replicate between two buckets with different vBucket counts, and **a bucket's vBucket count
+can never be changed after it's created** -- there is no migration path for an
+already-created bucket, only drop-and-recreate.
+
+Every self-managed Couchbase Server source this app supports (7.2-8.0.2) uses the
+traditional **1024-vBucket** layout. But Couchbase Server 8.0 introduced a newer Magma
+storage option that defaults new buckets to **128 vBuckets** instead -- and that's exactly
+what you get if you create a Capella (or self-managed 8.0+) bucket through the UI without
+explicitly choosing "1024 vBuckets" under its storage-backend settings. Point continuous or
+hybrid replication at a 128-vBucket destination bucket from a 1024-vBucket source and XDCR
+setup fails outright:
+
+```
+Failed to create XDCR replication: 400 {"errors":{"toBucket":"The number of vbuckets in
+source cluster, 1024, and target cluster, 128, does not match. This configuration is not
+supported."}}
+```
+
+Two things guard against this:
+
+- **Auto-provisioning always requests 1024.** `CapellaClient.create_bucket()`
+  (`backend/app/core/capella_client.py`) explicitly sets `numVBuckets: 1024` whenever this
+  app creates a destination bucket for you, so a bucket it provisions itself is always
+  XDCR-compatible with a self-managed source.
+- **The validator checks it before approval, not after a wasted backup+restore.** The
+  `XDCR_VBUCKET_COMPAT` check (`backend/app/core/validator.py`) runs whenever the strategy is
+  continuous/hybrid and the source is a Couchbase Enterprise Edition cluster. It compares the
+  source bucket's vBucket count (read via the classic REST bucket-detail endpoint,
+  `CouchbaseSourceConnector.get_vbucket_count()`) against the destination bucket's, if that
+  bucket already exists (`CouchbaseClusterClient.get_vbucket_count()` -- the same classic
+  REST call already used for destination topology, which works against Capella too, not just
+  self-managed clusters). A destination bucket that doesn't exist yet is treated as
+  informational, not a failure, since auto-provisioning will create it correctly. A mismatch
+  on an *already-existing* destination bucket is a hard (red) validation failure that blocks
+  approval, with a message telling you to drop and recreate the bucket with a matching
+  vBucket count -- catching this at validation time, before approving the migration, avoids
+  running a full `cbbackupmgr` backup+restore (which can take minutes) only to have XDCR
+  setup fail afterward.
 
 ### Migration pipeline modes
 
@@ -97,6 +172,11 @@ validate -> await approval -> [replication mode] -> verify -> COMPLETE
 | `full_load` | **One-time migration** | Every included container is extracted and loaded into Couchbase once | `COMPLETE` after transfer + verification |
 | `cdc_live` | **Continuous replication** | Change-data-capture starts immediately and stays running | `REPLICATING` (ongoing) until stopped |
 | `full_load_and_cdc` | **Bulk copy + continuous sync** | A full load for existing data, then change-data-capture takes over the ongoing delta | `REPLICATING` (ongoing) until stopped |
+
+For a Couchbase source, these three modes map onto Couchbase's own tools instead of the
+generic pipeline: `full_load` runs `cbbackupmgr backup` + `restore`, `cdc_live` starts an XDCR
+replication directly, and `full_load_and_cdc` runs `cbbackupmgr` first and then starts XDCR for
+the ongoing delta -- see "Why Couchbase sources are different" above.
 
 The "Ask the agent" recommendation on the Destination & Mode step
 (`backend/app/core/recommendation.py`) is a fast, deterministic rule engine, not a live LLM
@@ -113,12 +193,19 @@ up a migration shouldn't be exposed to LLM latency or a hallucinated recommendat
 | Cassandra row (partition+clustering key) | `table::<pk>[:<ck>]` | Row read via `dict_factory`; collection/counter columns preserved as JSON arrays/objects |
 | Cosmos DB item (`id` + partition key) | `container::<pk>::<id>` | System properties (`_rid`, `_self`, `_etag`, `_attachments`) stripped; `_ts` kept as `_cosmos_ts` |
 
-Every migrated document also gets a `_migration` envelope (`migration_id`, `source_container`,
-`migrated_at`) used for verification counts and rollback purges.
+Every migrated document from these five sources also gets a `_migration` envelope
+(`migration_id`, `source_container`, `migrated_at`) used for verification counts and rollback
+purges.
+
+A **Couchbase source doesn't appear in this table** -- cbbackupmgr and XDCR move documents at
+the bucket/collection level, unmodified, so there's no key remapping or `_migration` envelope
+to speak of; verification is a destination item-count comparison instead.
 
 ### Connector implementation depth
 
-**MongoDB is the reference-depth connector** -- the pattern the other four follow:
+**MongoDB is the reference-depth connector** -- the pattern DynamoDB, Redis, Cassandra, and
+Cosmos DB follow (Couchbase is the one source that doesn't follow this pattern at all --
+see below):
 
 - Full introspection (server version, replica-set detection, per-collection `collStats`,
   sample fields).
@@ -126,7 +213,7 @@ Every migrated document also gets a `_migration` envelope (`migration_id`, `sour
 - Continuous sync via native MongoDB **Change Streams** (resumable, one watcher thread per
   collection, running concurrently).
 
-The other four are **working, but intentionally lighter on edge-case hardening**:
+Those four are **working, but intentionally lighter on edge-case hardening**:
 
 - **Amazon DynamoDB** -- introspection via `describe_table`; extraction via paginated
   `Scan`; continuous sync via **DynamoDB Streams**. Does not follow shard splits/merges --
@@ -156,6 +243,25 @@ The other four are **working, but intentionally lighter on edge-case hardening**
   inherent to Cosmos DB itself: the default "Latest Version" change feed mode **does not
   surface deletes** (Cosmos does offer a newer "All Versions and Deletes" mode on some API
   versions, intentionally not used here to keep one code path working across accounts).
+- **Couchbase Server (Community Edition, Enterprise Edition, or Capella)** -- the one source
+  that **doesn't** follow the generic connector pattern above. `backend/app/core/connectors/couchbase_source.py`
+  only handles introspection: server/cluster version and edition, and per-bucket
+  scope/collection listing via the SDK's `collections().get_all_scopes()` (works uniformly
+  across all three variants). Its `extract()` is intentionally dead code -- it raises
+  immediately, because `MigrationEngine` routes any Couchbase source straight to
+  `backend/app/core/couchbase_native.py` instead (`cbbackupmgr` for one-time loads, XDCR for
+  continuous replication; see "Why Couchbase sources are different" above). `supports_cdc` is
+  `True` only for a self-managed **Enterprise Edition** source, since that's the only variant
+  XDCR is wired up for here:
+  - **Community Edition** -- one-time `cbbackupmgr` load only; CE has no XDCR at all.
+  - **Enterprise Edition** (self-managed) -- one-time `cbbackupmgr` load, continuous XDCR, or
+    both.
+  - **Capella** -- one-time `cbbackupmgr` load only today. XDCR-from-Capella isn't
+    implemented: `couchbase_native.py`'s `XdcrManager` drives the classic cluster-manager REST
+    API (`/pools/default/remoteClusters`, `/controller/createReplication`), which Capella
+    likely doesn't expose to external callers the same way a self-managed cluster does --
+    mirroring why the destination side already needs a separate `CapellaClient`. This is a
+    known, documented gap, not a silent assumption.
 
 ### Bottleneck detection & auto-throttle
 
@@ -185,8 +291,11 @@ sibling project: a concurrency change doesn't fix a dead connection or a real ne
    runs validation.
 3. **Validate** -- source connectivity/edition, destination connectivity/capacity, CDC
    availability for the chosen mode, container-name-sanitization collisions, an average
-   document-size sanity check against Couchbase's 20 MiB limit, network latency, and TLS
-   configuration. Failed (red) checks block **Continue**; warnings (yellow) don't.
+   document-size sanity check against Couchbase's 20 MiB limit, network latency, TLS
+   configuration, and (for continuous/hybrid Couchbase-source migrations only) an XDCR
+   vBucket-count compatibility check between source and destination -- see "XDCR requires
+   matching vBucket counts" above. Failed (red) checks block **Continue**; warnings (yellow)
+   don't.
 4. **Review & Approve** -- a summary card, an approver name field, and **Approve & view
    migration**, which takes you to the migration's detail page.
 5. **Start** -- on the detail page, once the migration is `approved`, click **Start
@@ -217,6 +326,70 @@ sibling project: a concurrency change doesn't fix a dead connection or a real ne
 - **Cassandra CDC poll interval / DynamoDB scan page size / etc.**: tunable via environment
   variables in `backend/app/config.py` (`CASSANDRA_CDC_POLL_INTERVAL_S`,
   `DYNAMODB_SCAN_PAGE_SIZE`, `REDIS_SCAN_COUNT`, `COSMOSDB_CHANGE_FEED_POLL_INTERVAL_S`, ...).
+- **Couchbase-source migrations**: `CBBACKUPMGR_PATH` (defaults to `cbbackupmgr` on `$PATH` --
+  the backend image's multi-stage build copies the binary out of the official
+  `couchbase:enterprise-*` image), `COUCHBASE_BACKUP_ARCHIVE_DIR` (defaults to
+  `/data/cbbackupmgr-archives`, backed by the `cbbackupmgr_archives` Docker volume), and
+  `XDCR_POLL_INTERVAL_S` (how often the backend polls `/pools/default/tasks` for XDCR
+  progress).
+
+### Restarting the backend mid-migration
+
+`MigrationStore` (`backend/app/core/store.py`) persists migration records to a JSON file
+that survives a backend restart, but the `asyncio` background task actually *driving* a
+migration (the full load, the XDCR-progress poll loop, a rollback) does not -- restarting
+the backend (a code change, a crash, `docker compose up --build` while something is running)
+kills that task, leaving the record frozen at whatever phase was last saved (`migrating`,
+`replicating`, `verifying`, `rolling_back`, `validating`) even though nothing is actually
+progressing it anymore.
+
+On startup, `_reconcile_orphaned_migrations()` (`backend/app/main.py`) scans for exactly this
+and marks any such record `failed` instead of leaving it stuck showing stale-but-real-looking
+progress. **For a Couchbase-source (XDCR) migration that was `replicating`, this is
+informational, not a cleanup**: XDCR itself runs on the *source* cluster, entirely
+independent of this app's process lifecycle, so restarting the backend does **not** stop it --
+the replication (and its remote-cluster reference) may well still be live on the source
+cluster afterward. Reconciliation intentionally does not try to tear that down automatically
+(it can't tell whether you wanted it stopped); check the source cluster's XDCR admin UI/REST
+API yourself and remove it manually if it's still running. This exact scenario is what caused
+a `cannot find remote cluster` error on a *subsequent* migration attempt on 2026-07-30, before
+this reconciliation step existed.
+
+### `cannot find remote cluster` on a brand-new XDCR migration
+
+A `cannot find remote cluster` failure can happen on a **fresh** migration too, with no orphaned
+app state involved at all -- confirmed live on 2026-07-30 against a guaranteed-clean state (a full
+`docker compose down -v` before the run) still hitting this error on the very first attempt.
+
+The real cause: `XdcrManager` (`backend/app/core/couchbase_native.py`) names each migration's
+remote-cluster reference uniquely (`onboarding-agent-<migration id>`), but Couchbase's
+`POST /pools/default/remoteClusters` refuses to register a *second* reference pointing at a
+destination host that's already registered under a *different* name -- and the 400 it returns for
+that case also happens to contain the substring "already exists," which the code used to treat as
+"nothing to do, a prior attempt already registered this." In practice that meant: once one
+migration to a given destination succeeded (or even just got as far as registering its reference),
+every later migration to that *same* destination would generate a new unique name, silently fail
+to register it (masked by the "already exists" short-circuit), and then fail on
+`createReplication()` because the name it was actually looking for was never created -- only the
+old one was. Checking the source cluster's own XDCR admin page (Couchbase Web Console ->
+XDCR) confirms this directly: exactly one lingering `onboarding-agent-*` reference from an earlier
+run, under a name the current migration was never going to find. This also explains why wiping
+this app's own state (`docker compose down -v`) never fixed it -- the stale reference lives on the
+*source cluster*, entirely outside this app's control.
+
+`create_remote_cluster_ref()` now tells the two cases apart: on a 400 "already exists," it checks
+what's actually registered. If the exact intended name is already there, it's a genuine no-op. If
+a *different* `onboarding-agent-*` reference is squatting on the same destination host instead, it
+removes that stale reference and retries registration once -- self-healing, and scoped only to
+references this app's own naming scheme created (never a reference you registered by hand).
+`_start_xdcr()` (`backend/app/core/migration_engine.py`) separately also retries
+`create_replication()` itself a few times with a short delay as a safety net for the rarer case of
+a genuine cluster-side config-propagation lag. Any other kind of failure (bad credentials,
+unreachable host, etc.) still raises immediately without retrying.
+
+If you hit this on a version of the app from before this fix, delete the stale reference by hand:
+Couchbase Web Console (on the *source* cluster) -> XDCR -> click the lingering
+`onboarding-agent-*` entry under Remote Clusters -> Delete.
 
 ### Troubleshooting a build failure behind a corporate proxy
 
@@ -255,7 +428,7 @@ npm run dev
 Backend Python is standard `ast`/mypy-friendly style; frontend is TypeScript strict-mode
 (`npm run build` runs `tsc -b && vite build`).
 
-## Adding a sixth source
+## Adding a new source
 
 1. Implement `SourceConnector` in `backend/app/core/connectors/<name>.py` (see
    `mongodb.py` for the reference-depth pattern, or `redis_connector.py`/
@@ -271,3 +444,11 @@ Backend Python is standard `ast`/mypy-friendly style; frontend is TypeScript str
 No other backend code needs to change -- `MigrationEngine`, `MigrationValidator`,
 `CouchbaseLoader`, and the API routes are all written against the `SourceConnector`
 interface, not any specific source.
+
+**Exception:** a new *Couchbase* source variant (there are three today -- Community,
+Enterprise, Capella, all sharing one `CouchbaseSourceConnector`) additionally needs a case in
+`MigrationEngine.run_migration()`'s `COUCHBASE_SOURCE_TYPES` check
+(`backend/app/models/enums.py`) and, if it should support continuous replication, wiring in
+`backend/app/core/couchbase_native.py`'s `XdcrManager` -- it does not go through the generic
+`SourceConnector.extract()`/`stream_changes()` path at all. See "Why Couchbase sources are
+different" above before adding one.

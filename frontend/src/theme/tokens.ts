@@ -47,4 +47,65 @@ export const SOURCE_TYPE_LABELS: Record<string, string> = {
   redis: "Redis",
   cassandra: "Apache Cassandra",
   cosmosdb: "Microsoft Azure Cosmos DB",
+  couchbase: "Couchbase (Community Edition)",
+  couchbase_enterprise: "Couchbase (Enterprise Edition)",
+  couchbase_capella: "Couchbase Capella",
+};
+
+/** Platform(s) each source connector talks to, the version range this app has
+ * been built/tested against, and a compact form of that range for tight
+ * spaces (sidebar). Single canonical source for both the wizard's source-type
+ * caption and the sidebar's "Migrations Supported" list, so the two can't
+ * drift out of sync. For the fully managed cloud services (DynamoDB, Cosmos
+ * DB, Capella) there's no self-hosted version to track; for self-managed
+ * Couchbase, the range matches this app's own destination-side supported
+ * range (see backend Settings.min/max_supported_cb_version), since source and
+ * destination are the same product family there. */
+export interface SourceTypeSupport {
+  platform: string;
+  versions: string;
+  versionShort: string;
+}
+
+export const SOURCE_TYPE_SUPPORT: Record<string, SourceTypeSupport> = {
+  mongodb: {
+    platform: "MongoDB Atlas or self-managed (Community & Enterprise)",
+    versions: "MongoDB Server 3.6 - 8.0",
+    versionShort: "3.6 - 8.0",
+  },
+  dynamodb: {
+    platform: "Amazon DynamoDB (AWS-managed) or DynamoDB Local",
+    versions: "Current DynamoDB API -- SaaS, no server version to track",
+    versionShort: "SaaS",
+  },
+  redis: {
+    platform: "Redis OSS, Redis Cloud, or Redis Enterprise",
+    versions: "Redis 5.0+",
+    versionShort: "5.0+",
+  },
+  cassandra: {
+    platform: "Apache Cassandra or DataStax Enterprise",
+    versions: "Cassandra 2.1 - 4.x",
+    versionShort: "2.1 - 4.x",
+  },
+  cosmosdb: {
+    platform: "Azure Cosmos DB, SQL (Core) API -- SaaS",
+    versions: "Current Cosmos DB API -- SaaS, no server version to track",
+    versionShort: "SaaS",
+  },
+  couchbase: {
+    platform: "Couchbase Server, self-managed (Community Edition)",
+    versions: "Couchbase Server 7.2 - 8.0.2",
+    versionShort: "7.2 - 8.0.2",
+  },
+  couchbase_enterprise: {
+    platform: "Couchbase Server, self-managed (Enterprise Edition)",
+    versions: "Couchbase Server 7.2 - 8.0.2",
+    versionShort: "7.2 - 8.0.2",
+  },
+  couchbase_capella: {
+    platform: "Couchbase Capella -- SaaS",
+    versions: "Current Couchbase Capella service -- SaaS, no self-hosted version to track",
+    versionShort: "SaaS",
+  },
 };

@@ -32,4 +32,8 @@ def get_connector(config: SourceConnectionConfig) -> SourceConnector:
         from app.core.connectors.cosmosdb import CosmosDBConnector
 
         return CosmosDBConnector(config)
+    if config.source_type in (SourceType.COUCHBASE, SourceType.COUCHBASE_ENTERPRISE, SourceType.COUCHBASE_CAPELLA):
+        from app.core.connectors.couchbase_source import CouchbaseSourceConnector
+
+        return CouchbaseSourceConnector(config)
     raise ValueError(f"Unsupported source_type: {config.source_type}")

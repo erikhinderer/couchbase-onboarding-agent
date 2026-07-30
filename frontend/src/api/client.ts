@@ -1,5 +1,6 @@
 import type {
   AgentChatResponse,
+  AgentStatusResponse,
   ContainerMigrationSpec,
   CouchbaseConnectionConfig,
   CouchbaseTopologySnapshot,
@@ -104,6 +105,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message, migration_id: migrationId, use_memory: true }),
     }),
+
+  agentStatus: () => request<AgentStatusResponse>("/api/agent/status"),
 };
 
 export type { MigrationStrategy, ContainerMigrationSpec };

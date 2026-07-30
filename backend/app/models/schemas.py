@@ -68,6 +68,18 @@ class SourceConnectionConfig(BaseModel):
     cosmos_endpoint: Optional[str] = None
     cosmos_key: Optional[str] = Field(None, repr=False)
 
+    # -- Couchbase source specifics --
+    couchbase_external_network: bool = Field(
+        False,
+        description="Set when the source Couchbase cluster runs on a cloud VM or Kubernetes "
+        "(EC2, GKE, etc.): tells the SDK to prefer each node's external/alternate address "
+        "(ClusterOptions(network='external')) instead of the internal address the cluster's "
+        "config returns after the initial connection -- otherwise KV/N1QL requests to nodes "
+        "other than the seed host fail with connection errors once the SDK has the full "
+        "cluster map. Requires alternate addressing to already be configured on the source "
+        "cluster itself (Couchbase Web Console -> Server Nodes -> External Address).",
+    )
+
     @field_validator("connection_string")
     @classmethod
     def _strip(cls, v: Optional[str]) -> Optional[str]:
@@ -325,6 +337,15 @@ class AgentChatResponse(BaseModel):
     reply: str
     recalled_memories: list[str] = Field(default_factory=list)
     suggested_actions: list[str] = Field(default_factory=list)
+
+
+class AgentStatusResponse(BaseModel):
+    """Reachability of the local Qwen LLM the chat/reasoning agent runs on --
+    polled by the sidebar status indicator. 'waiting' specifically means the
+    server is up but the model is still being pulled (first-boot only)."""
+
+    status: str  # "ready" | "waiting" | "error"
+    detail: str
 
 
 # ---------------------------------------------------------------------------

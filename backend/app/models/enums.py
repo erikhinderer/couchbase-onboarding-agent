@@ -8,6 +8,16 @@ class SourceType(str, Enum):
     REDIS = "redis"
     CASSANDRA = "cassandra"
     COSMOSDB = "cosmosdb"
+    COUCHBASE = "couchbase"                    # Community Edition, self-managed
+    COUCHBASE_ENTERPRISE = "couchbase_enterprise"  # Enterprise Edition, self-managed
+    COUCHBASE_CAPELLA = "couchbase_capella"
+
+
+# All three source flavors of the same product -- migration_engine.py routes
+# these to the native cbbackupmgr/XDCR pipeline (see couchbase_native.py)
+# instead of the generic per-document extract/upsert pipeline every other
+# source uses.
+COUCHBASE_SOURCE_TYPES = {SourceType.COUCHBASE, SourceType.COUCHBASE_ENTERPRISE, SourceType.COUCHBASE_CAPELLA}
 
 
 class MigrationStrategy(str, Enum):
@@ -67,6 +77,7 @@ class ValidationCheckId(str, Enum):
     NETWORK_LATENCY = "network_latency"
     TLS_CONFIG = "tls_config"
     NAMING_COMPAT = "naming_compat"
+    XDCR_VBUCKET_COMPAT = "xdcr_vbucket_compat"
 
 
 class BottleneckKind(str, Enum):

@@ -1,13 +1,26 @@
+import { Fragment } from "react";
 import type { SourceConnectionConfig, SourceType } from "@/api/types";
-import { SOURCE_TYPE_LABELS } from "@/theme/tokens";
+import { SOURCE_TYPE_LABELS, SOURCE_TYPE_SUPPORT } from "@/theme/tokens";
 
-const SOURCE_TYPES: SourceType[] = ["mongodb", "dynamodb", "redis", "cassandra", "cosmosdb"];
+const SOURCE_TYPES: SourceType[] = [
+  "mongodb", "dynamodb", "redis", "cassandra", "cosmosdb",
+  "couchbase", "couchbase_enterprise", "couchbase_capella",
+];
 
 const PLACEHOLDER: Partial<Record<SourceType, string>> = {
   mongodb: "mongodb://host1,host2/?replicaSet=rs0",
   redis: "redis://host:6379",
   cassandra: "host1,host2,host3",
+  couchbase: "couchbase://host1,host2",
+  couchbase_enterprise: "couchbase://host1,host2",
+  couchbase_capella: "couchbases://cb.xxxxxxxxxxxxxxxx.cloud.couchbase.com",
 };
+
+const CB_FAMILY: SourceType[] = ["couchbase", "couchbase_enterprise", "couchbase_capella"];
+const CB_SELF_MANAGED: SourceType[] = ["couchbase", "couchbase_enterprise"];
+const HAS_CONNECTION_STRING: SourceType[] = ["mongodb", "redis", "cassandra", ...CB_FAMILY];
+const HAS_DATABASE_FIELD: SourceType[] = ["mongodb", "cassandra", "cosmosdb", ...CB_FAMILY];
+const HAS_USERNAME_PASSWORD: SourceType[] = ["mongodb", "redis", "cassandra", ...CB_FAMILY];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -18,6 +31,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function databaseFieldLabel(t: SourceType): string {
+  if (t === "cassandra") return "Keyspace";
+  if (CB_FAMILY.includes(t)) return "Bucket";
+  return "Database";
+}
+
 export default function SourceConfigForm({
   value,
   onChange,
@@ -26,24 +45,49 @@ export default function SourceConfigForm({
   onChange: (patch: Partial<SourceConnectionConfig>) => void;
 }) {
   const t = value.source_type;
+  const support = SOURCE_TYPE_SUPPORT[t];
+  const isCapella = t === "couchbase_capella";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Field label="Source type">
-        <select value={t} onChange={(e) => onChange({ source_type: e.target.value as SourceType })}>
+        <select
+          value={t}
+          onChange={(e) => {
+            const next = e.target.value as SourceType;
+            onChange({
+              source_type: next,
+              // Capella mandates TLS -- don't leave a user on an
+              // unencrypted connection just because a prior source type
+              // left the toggle unchecked.
+              use_tls: next === "couchbase_capella" ? true : value.use_tls,
+            });
+          }}
+        >
           {SOURCE_TYPES.map((v) => (
-            <option key={v} value={v}>
-              {SOURCE_TYPE_LABELS[v]}
-            </option>
+            <Fragment key={v}>
+              {v === "couchbase" && (
+                <option disabled style={{ borderTop: "1px solid var(--text-primary)", color: "transparent" }}>
+                  {"─".repeat(24)}
+                </option>
+              )}
+              <option value={v}>{SOURCE_TYPE_LABELS[v]}</option>
+            </Fragment>
           ))}
         </select>
       </Field>
+
+      {support && (
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: -6 }}>
+          {support.platform} &middot; {support.versions}
+        </div>
+      )}
 
       <Field label="Friendly name">
         <input value={value.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="Production MongoDB" />
       </Field>
 
-      {(t === "mongodb" || t === "redis" || t === "cassandra") && (
+      {HAS_CONNECTION_STRING.includes(t) && (
         <Field label={t === "cassandra" ? "Contact points (comma-separated)" : "Connection string"}>
           <input
             value={value.connection_string || ""}
@@ -53,8 +97,8 @@ export default function SourceConfigForm({
         </Field>
       )}
 
-      {(t === "mongodb" || t === "cassandra" || t === "cosmosdb") && (
-        <Field label={t === "cassandra" ? "Keyspace" : "Database"}>
+      {HAS_DATABASE_FIELD.includes(t) && (
+        <Field label={databaseFieldLabel(t)}>
           <input value={value.database || ""} onChange={(e) => onChange({ database: e.target.value })} />
         </Field>
       )}
@@ -88,7 +132,7 @@ export default function SourceConfigForm({
         </Field>
       )}
 
-      {(t === "mongodb" || t === "redis" || t === "cassandra") && (
+      {HAS_USERNAME_PASSWORD.includes(t) && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field label="Username">
             <input value={value.username || ""} onChange={(e) => onChange({ username: e.target.value })} />
@@ -103,10 +147,34 @@ export default function SourceConfigForm({
         </div>
       )}
 
-      {(t === "mongodb" || t === "redis" || t === "cassandra") && (
+      {(t === "mongodb" || t === "redis" || t === "cassandra" || CB_SELF_MANAGED.includes(t)) && (
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
           <input type="checkbox" checked={!!value.use_tls} onChange={(e) => onChange({ use_tls: e.target.checked })} />
           Use TLS
+        </label>
+      )}
+
+      {isCapella && (
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>TLS is required and always enabled for Capella.</div>
+      )}
+
+      {CB_SELF_MANAGED.includes(t) && (
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5 }}>
+          <input
+            type="checkbox"
+            style={{ marginTop: 2 }}
+            checked={!!value.couchbase_external_network}
+            onChange={(e) => onChange({ couchbase_external_network: e.target.checked })}
+          />
+          <span>
+            Cluster is on a cloud VM or Kubernetes (EC2, GKE, etc.)
+            <div style={{ color: "var(--text-muted)", fontSize: 11.5, marginTop: 3 }}>
+              Enable if the connection succeeds at first but then fails with "connection
+              refused" once the SDK has the full cluster map. Also requires External Address /
+              alternate addressing to already be configured on the source cluster itself
+              (Couchbase Web Console &rarr; Server Nodes).
+            </div>
+          </span>
         </label>
       )}
 
@@ -160,6 +228,16 @@ export default function SourceConfigForm({
             <input type="password" value={value.cosmos_key || ""} onChange={(e) => onChange({ cosmos_key: e.target.value })} />
           </Field>
         </>
+      )}
+
+      {CB_FAMILY.includes(t) && (
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+          A Couchbase-to-Couchbase migration uses Couchbase's own native tools -- cbbackupmgr for
+          one-time migration, XDCR for continuous replication -- instead of this app's generic
+          per-document pipeline. Continuous/hybrid replication is only available from a
+          self-managed Enterprise Edition source (XDCR isn't available on Community Edition, and
+          isn't wired up here yet for a Capella source).
+        </div>
       )}
 
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>

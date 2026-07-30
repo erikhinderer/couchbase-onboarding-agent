@@ -14,12 +14,19 @@ from app.memory.couchbase_memory import AgentMemoryStore
 from app.models.schemas import (
     AgentChatRequest,
     AgentChatResponse,
+    AgentStatusResponse,
     ReplicationModeRecommendationRequest,
     ReplicationModeRecommendationResponse,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/status", response_model=AgentStatusResponse)
+async def status() -> AgentStatusResponse:
+    state, detail = await QwenAgentClient().status()
+    return AgentStatusResponse(status=state, detail=detail)
 
 
 @router.post("/chat", response_model=AgentChatResponse)

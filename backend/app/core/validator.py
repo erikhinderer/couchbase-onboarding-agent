@@ -14,12 +14,21 @@ import logging
 import time
 from uuid import UUID
 
+import asyncio
+
 from app.core.capella_client import CapellaClient
 from app.core.connectors.base import SourceConnectorError
+from app.core.connectors.couchbase_source import CouchbaseSourceConnector
 from app.core.connectors.registry import get_connector
 from app.core.connectors.util import COUCHBASE_MAX_DOC_SIZE_BYTES
 from app.core.couchbase_client import CouchbaseClientError, CouchbaseClusterClient, sanitize_couchbase_name
-from app.models.enums import CONTINUOUS_STRATEGIES, MigrationStrategy, ValidationCheckId, ValidationSeverity
+from app.models.enums import (
+    COUCHBASE_SOURCE_TYPES,
+    CONTINUOUS_STRATEGIES,
+    MigrationStrategy,
+    ValidationCheckId,
+    ValidationSeverity,
+)
 from app.models.schemas import (
     ContainerMigrationSpec,
     CouchbaseConnectionConfig,
@@ -41,12 +50,14 @@ class MigrationValidator:
         destination: CouchbaseConnectionConfig,
         strategy: MigrationStrategy,
         containers: list[ContainerMigrationSpec],
+        destination_bucket: str | None = None,
     ):
         self.migration_id = migration_id
         self.source_config = source
         self.dest_config = destination
         self.strategy = strategy
         self.containers = containers
+        self.destination_bucket = destination_bucket
         self.checks: list[ValidationCheckResult] = []
 
     def _add(self, check_id: ValidationCheckId, label: str, severity: ValidationSeverity,
@@ -67,6 +78,7 @@ class MigrationValidator:
         if source_topology and dest_topology:
             self._check_capacity(source_topology, dest_topology)
 
+        await self._check_xdcr_vbucket_compat()
         self._check_tls()
 
         return ValidationReport(
@@ -179,6 +191,82 @@ class MigrationValidator:
                 source.cdc_notes or "This source does not currently support continuous change-data-capture, "
                 "which the selected replication mode requires.",
             )
+
+    async def _check_xdcr_vbucket_compat(self) -> None:
+        """Continuous/hybrid replication from a Couchbase source uses XDCR
+        (see core/couchbase_native.py), which refuses to replicate between
+        buckets with different vBucket counts -- and a bucket's vBucket count
+        can never be changed after it's created. Confirmed against a live
+        cluster on 2026-07-30: a full cbbackupmgr backup+restore ran to
+        completion before XDCR setup failed with "The number of vbuckets in
+        source cluster, 1024, and target cluster, 128, does not match. This
+        configuration is not supported." -- Couchbase Server 8.0 defaults new
+        Magma buckets to 128 vBuckets, which doesn't match the traditional
+        1024-vBucket layout every self-managed source this app supports
+        (7.2-8.0.2) uses. Catching this here, before approval, avoids wasting
+        that same backup+restore time on a migration that was always going to
+        fail at the XDCR step."""
+        if self.strategy not in CONTINUOUS_STRATEGIES or self.source_config.source_type not in COUCHBASE_SOURCE_TYPES:
+            return  # XDCR isn't involved at all otherwise
+
+        source_connector = CouchbaseSourceConnector(self.source_config)
+        try:
+            source_vbuckets = await source_connector.get_vbucket_count()
+        except Exception as exc:  # noqa: BLE001
+            source_vbuckets = None
+            logger.warning("Could not determine source vBucket count: %s", exc)
+        finally:
+            await source_connector.close()
+
+        if source_vbuckets is None:
+            self._add(
+                ValidationCheckId.XDCR_VBUCKET_COMPAT, "XDCR vBucket compatibility",
+                ValidationSeverity.WARNING, True,
+                "Could not determine the source bucket's vBucket count to compare against the destination -- "
+                "this will only surface as a hard failure at XDCR setup time if the two don't match.",
+            )
+            return
+
+        if not self.destination_bucket:
+            self._add(
+                ValidationCheckId.XDCR_VBUCKET_COMPAT, "XDCR vBucket compatibility",
+                ValidationSeverity.INFO, True,
+                f"Source bucket uses {source_vbuckets} vBuckets. No destination bucket name given yet to compare "
+                "against.",
+            )
+            return
+
+        dest_client = CouchbaseClusterClient(self.dest_config)
+        try:
+            dest_vbuckets = await asyncio.to_thread(dest_client.get_vbucket_count, self.destination_bucket)
+        except Exception as exc:  # noqa: BLE001
+            dest_vbuckets = None
+            logger.warning("Could not determine destination vBucket count: %s", exc)
+        finally:
+            dest_client.close()
+
+        if dest_vbuckets is None:
+            self._add(
+                ValidationCheckId.XDCR_VBUCKET_COMPAT, "XDCR vBucket compatibility",
+                ValidationSeverity.INFO, True,
+                f"Destination bucket '{self.destination_bucket}' doesn't exist yet -- it will be "
+                f"auto-provisioned with {source_vbuckets} vBuckets to match the source when this migration "
+                "is approved.",
+            )
+            return
+
+        passed = dest_vbuckets == source_vbuckets
+        self._add(
+            ValidationCheckId.XDCR_VBUCKET_COMPAT, "XDCR vBucket compatibility",
+            ValidationSeverity.ERROR, passed,
+            f"Source and destination buckets both use {source_vbuckets} vBuckets." if passed else
+            f"Source bucket uses {source_vbuckets} vBuckets, but destination bucket '{self.destination_bucket}' "
+            f"already exists with {dest_vbuckets} -- XDCR requires both to match, and a bucket's vBucket count "
+            "can never be changed after creation. Drop and recreate the destination bucket requesting "
+            f"{source_vbuckets} vBuckets before approving this migration (Couchbase Server 8.0+ defaults new "
+            "Magma buckets to 128, which won't match a traditional 1024-vBucket source).",
+            details={"source_vbuckets": source_vbuckets, "dest_vbuckets": dest_vbuckets},
+        )
 
     def _check_naming_compat(self, source: SourceTopologySnapshot) -> None:
         by_target: dict[tuple[str, str], list[str]] = {}

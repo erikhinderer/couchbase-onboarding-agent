@@ -12,8 +12,8 @@ export function CouchbaseWordmark() {
         C
       </div>
       <div style={{ lineHeight: 1.1 }}>
-        <div style={{ fontWeight: 700, fontSize: 24, color: "var(--text-primary)" }}>Couchbase</div>
-        <div style={{ fontSize: 18, color: "var(--text-muted)", fontWeight: 600, letterSpacing: 0.02 }}>
+        <div style={{ fontWeight: 700, fontSize: 22, color: "var(--text-primary)" }}>Couchbase</div>
+        <div style={{ fontSize: 22, color: "var(--text-primary)", fontWeight: 700, letterSpacing: 0.02 }}>
           Onboarding Agent
         </div>
       </div>

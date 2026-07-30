@@ -63,9 +63,17 @@ export default function MigrationDetailPage() {
         <TopologyDiagram
           sourceType={plan.source.source_type}
           sourceLabel={plan.source.label}
+          containerCount={plan.containers.filter((c) => c.include).length}
           destLabel={plan.destination.label}
+          isCapella={plan.destination.is_capella}
           bucket={plan.destination_bucket}
+          bucketCount={record.validation_report?.dest_topology?.buckets.length || 1}
+          destNodes={record.validation_report?.dest_topology?.nodes.map((n) => ({
+            hostname: n.hostname,
+            services: n.services,
+          }))}
           phase={phase}
+          throughputPerSec={CONTINUOUS_PHASES.has(phase) ? stats.mutations_per_sec : stats.throughput_docs_per_sec}
         />
       </div>
 

@@ -1,6 +1,34 @@
+# cbbackupmgr isn't distributed as a standalone package -- it ships inside the
+# full Couchbase Server install. Pulling it (plus the shared libraries it's
+# dynamically linked against) out of the official server image via a
+# multi-stage build avoids installing the whole ~500MB+ server into this image
+# just for one binary. Needed for Couchbase-to-Couchbase migrations only (see
+# core/couchbase_native.py) -- every other source connector doesn't touch it.
+#
+# CONFIRMED BROKEN, then fixed (2026-07-30): setting LD_LIBRARY_PATH globally
+# for the whole image made every process resolve libstdc++.so.6 from the
+# Couchbase Enterprise image's (older, Ubuntu-based) copy instead of Debian's
+# own -- including apt-get itself, which then failed with
+# "libstdc++.so.6: version `CXXABI_1.3.15' not found" partway through this
+# same build (apt's libapt-pkg.so.7.0 needs the newer Debian libstdc++).
+# Fix: don't export LD_LIBRARY_PATH image-wide. Only cbbackupmgr needs the
+# Couchbase-provided shared libraries, so CbBackupMgrRunner._run() in
+# core/couchbase_native.py sets LD_LIBRARY_PATH on that one subprocess's own
+# environment instead, leaving every other process (apt, pip, python, uvicorn)
+# to resolve libstdc++ and friends from the base image as normal.
+FROM couchbase:enterprise-7.6.2 AS cbtools
+
 FROM python:3.11-slim AS base
 
 WORKDIR /app
+
+COPY --from=cbtools /opt/couchbase/bin/cbbackupmgr /opt/couchbase/bin/cbbackupmgr
+COPY --from=cbtools /opt/couchbase/lib /opt/couchbase/lib
+# PATH is safe to extend image-wide (it only affects which cbbackupmgr binary
+# is *found*, not which shared libraries anything links against).
+# LD_LIBRARY_PATH is deliberately NOT set here -- see the comment above.
+ENV PATH="/opt/couchbase/bin:${PATH}" \
+    COUCHBASE_TOOLS_LIB="/opt/couchbase/lib"
 
 COPY requirements.txt .
 

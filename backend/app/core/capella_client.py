@@ -78,6 +78,17 @@ class CapellaClient:
             "durabilityLevel": "none",
             "replicas": 1,
             "flush": False,
+            # Explicit, not just relying on storageBackend "couchstore" defaulting to
+            # 1024 -- XDCR refuses to replicate between buckets with different
+            # vbucket counts (confirmed against a live cluster on 2026-07-30:
+            # "The number of vbuckets in source cluster, 1024, and target cluster,
+            # 128, does not match. This configuration is not supported."), and a
+            # bucket's vbucket count can never be changed after creation. Every
+            # self-managed Couchbase Server source this app supports (7.2-8.0.2)
+            # uses the traditional 1024-vbucket layout, so a Capella destination
+            # bucket THIS APP creates should always match it for
+            # continuous/hybrid (XDCR) migrations to even be possible.
+            "numVBuckets": 1024,
         }
         return self._post(
             f"/organizations/{self.settings.capella_org_id}/projects/{project_id}"

@@ -157,6 +157,22 @@ class CouchbaseClusterClient:
             result[scope["name"]] = [c["name"] for c in scope.get("collections", [])]
         return result
 
+    def get_vbucket_count(self, bucket: str) -> int | None:
+        """Returns this destination bucket's vBucket count, or None if the
+        bucket doesn't exist yet or the field can't be read -- best-effort,
+        used by validator.py's XDCR_VBUCKET_COMPAT pre-flight check (a bucket
+        that doesn't exist yet just hasn't been auto-provisioned, which this
+        app now always does with a 1024-vBucket bucket for a Couchbase source
+        -- see capella_client.py's create_bucket()). This same classic REST
+        call already works against a Capella destination (see _mgmt_base_url()
+        above), not just self-managed clusters."""
+        try:
+            data = self._rest_get(f"/pools/default/buckets/{bucket}")
+        except CouchbaseClientError:
+            return None
+        vbucket_map = (data.get("vBucketServerMap") or {}).get("vBucketMap")
+        return len(vbucket_map) if vbucket_map else None
+
     def snapshot_topology(self) -> CouchbaseTopologySnapshot:
         pools = self.get_pools_default()
         version = self.get_server_version()

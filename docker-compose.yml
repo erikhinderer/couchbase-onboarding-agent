@@ -71,10 +71,19 @@ services:
       - "11434:11434"
     networks: [coa-net]
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      # `ollama list` alone succeeds as soon as the server is up, which is well
+      # before entrypoint.sh finishes pulling the ~5GB qwen3:8b model on first
+      # boot -- that race let `backend` (and therefore the chat UI) come up
+      # "healthy" while Qwen was still downloading, so /api/chat calls during
+      # that window failed with a raw 500 instead of a clear "still starting"
+      # message. Require the model to actually be present before reporting healthy.
+      # Keep this in sync with QWEN_MODEL in qwen-service/Dockerfile (this is a
+      # docker-compose-level substitution, so changing the Dockerfile's ENV
+      # alone won't update it -- set QWEN_MODEL in .env too if you change the model).
+      test: ["CMD-SHELL", "ollama list | grep -q \"${QWEN_MODEL:-qwen3:8b}\""]
       interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 60
       start_period: 20s
 
   # -- FastAPI backend / migration engine -----------------------------------
@@ -90,6 +99,10 @@ services:
     volumes:
       - state_data:/data/state
       - scratch_data:/data/scratch
+      # cbbackupmgr archives for Couchbase-to-Couchbase migrations (see
+      # core/couchbase_native.py) -- one subdirectory per migration ID, unlike
+      # scratch_data which is scoped per-container-batch working files.
+      - cbbackupmgr_archives:/data/cbbackupmgr-archives
     ports:
       - "8000:8000"
     depends_on:
@@ -125,3 +138,4 @@ volumes:
   ollama_data:
   state_data:
   scratch_data:
+  cbbackupmgr_archives:

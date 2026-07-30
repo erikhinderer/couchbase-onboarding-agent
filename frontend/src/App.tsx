@@ -5,7 +5,21 @@ import DashboardPage from "@/pages/DashboardPage";
 import NewMigrationPage from "@/pages/NewMigrationPage";
 import MigrationDetailPage from "@/pages/MigrationDetailPage";
 import AgentPanel from "@/components/agent/AgentPanel";
+import AgentStatusIndicator from "@/components/agent/AgentStatusIndicator";
 import { useWizardStore } from "@/store/wizardStore";
+import type { SourceType } from "@/api/types";
+import { SOURCE_TYPE_SUPPORT } from "@/theme/tokens";
+
+const SUPPORTED_SOURCES: { label: string; type: SourceType }[] = [
+  { label: "MongoDB", type: "mongodb" },
+  { label: "DynamoDB", type: "dynamodb" },
+  { label: "Redis", type: "redis" },
+  { label: "Cassandra", type: "cassandra" },
+  { label: "Cosmos DB", type: "cosmosdb" },
+  { label: "Couchbase (CE)", type: "couchbase" },
+  { label: "Couchbase (EE)", type: "couchbase_enterprise" },
+  { label: "Couchbase (Capella)", type: "couchbase_capella" },
+];
 
 export default function App() {
   const wizardReset = useWizardStore((s) => s.reset);
@@ -27,9 +41,20 @@ export default function App() {
         </div>
         <NavItem to="/" icon={<LayoutDashboard size={16} />} label="Migrations" end />
         <NavItem to="/new" icon={<PlusCircle size={16} />} label="New Migration" onClick={wizardReset} />
-        <div style={{ marginTop: "auto", padding: "8px" }}>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            MongoDB &middot; DynamoDB &middot; Redis &middot; Cassandra &middot; Cosmos DB &rarr; Couchbase
+        <div style={{ marginTop: "auto", padding: "8px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 11, color: "var(--text-primary)" }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Migrations Supported:</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {SUPPORTED_SOURCES.map((s) => (
+                <div key={s.type}>
+                  - {s.label} ({SOURCE_TYPE_SUPPORT[s.type]?.versionShort})
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 12 }}>
+            <AgentStatusIndicator />
           </div>
         </div>
       </aside>

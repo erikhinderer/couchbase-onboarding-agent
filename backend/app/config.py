@@ -75,6 +75,19 @@ class Settings(BaseSettings):
     cosmosdb_page_size: int = 1000
     cosmosdb_change_feed_poll_interval_s: int = 5
 
+    # --- Source: Couchbase Server (CE/EE) / Capella -- native tooling ---
+    # A deliberate exception to this app's usual architecture: every other source
+    # is strictly read-only, moved through a generic per-document extract/upsert
+    # pipeline (see README's "Why there's no separate backup step"). A Couchbase
+    # source instead uses Couchbase's own native tools, same as the sibling
+    # couchbase-migration-agent project -- cbbackupmgr for one-time/full-load
+    # transfer, XDCR for continuous replication -- since they're the correct,
+    # battle-tested tools for a same-product migration. See
+    # core/couchbase_native.py's module docstring for what that trades away.
+    cbbackupmgr_path: str = "cbbackupmgr"
+    couchbase_backup_archive_dir: str = "/data/cbbackupmgr-archives"
+    xdcr_poll_interval_s: int = 5
+
 
 @lru_cache
 def get_settings() -> Settings:
