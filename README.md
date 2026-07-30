@@ -51,11 +51,6 @@ eight source systems.
 
 ## Migration pipeline modes
 
-```
-validate -> await approval -> [replication mode] -> verify -> COMPLETE
-                 (no backup phase -- see above)
-```
-
 | Mode | User-facing label | What happens | Terminal state |
 |---|---|---|---|
 | `full_load` | **One-time migration** | Every included container is extracted and loaded into Couchbase once | `COMPLETE` after transfer + verification |
