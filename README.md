@@ -17,7 +17,7 @@ MongoDB, Amazon DynamoDB, Redis, Apache Cassandra ad Microsoft Azure Cosmos DB u
 - Cosmos DB (SaaS)
 - Couchbase (CE) (7.2 - 8.0.2)
 - Couchbase (EE) (7.2 - 8.0.2)
-- Couchbase (Capella) (SaaS)
+- Couchbase Capella (SaaS)
 
 ## Couchbase Onboarding Agent AI Capabilities
 
