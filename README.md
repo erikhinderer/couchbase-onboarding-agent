@@ -49,6 +49,29 @@ eight source systems.
   question is grounded in that specific migration's live phase, stats, and validation report, so
   answers reference what's actually happening rather than generic advice.
 
+## Migration pipeline modes
+
+```
+validate -> await approval -> [replication mode] -> verify -> COMPLETE
+                 (no backup phase -- see above)
+```
+
+| Mode | User-facing label | What happens | Terminal state |
+|---|---|---|---|
+| `full_load` | **One-time migration** | Every included container is extracted and loaded into Couchbase once | `COMPLETE` after transfer + verification |
+| `cdc_live` | **Continuous replication** | Change-data-capture starts immediately and stays running | `REPLICATING` (ongoing) until stopped |
+| `full_load_and_cdc` | **Bulk copy + continuous sync** | A full load for existing data, then change-data-capture takes over the ongoing delta | `REPLICATING` (ongoing) until stopped |
+
+For a Couchbase source, these three modes map onto Couchbase's own tools instead of the
+generic pipeline: `full_load` runs `cbbackupmgr backup` + `restore`, `cdc_live` starts an XDCR
+replication directly, and `full_load_and_cdc` runs `cbbackupmgr` first and then starts XDCR for
+the ongoing delta -- see "Why Couchbase sources are different" above.
+
+The "Ask the agent" recommendation on the Destination & Mode step
+(`backend/app/core/recommendation.py`) is a fast, deterministic rule engine, not a live LLM
+call -- same rationale as the sibling project: a wizard step on the critical path of setting
+up a migration shouldn't be exposed to LLM latency or a hallucinated recommendation.
+
 ## Quick start
 
 ```bash
@@ -202,29 +225,6 @@ Two things guard against this:
   vBucket count -- catching this at validation time, before approving the migration, avoids
   running a full `cbbackupmgr` backup+restore (which can take minutes) only to have XDCR
   setup fail afterward.
-
-### Migration pipeline modes
-
-```
-validate -> await approval -> [replication mode] -> verify -> COMPLETE
-                 (no backup phase -- see above)
-```
-
-| Mode | User-facing label | What happens | Terminal state |
-|---|---|---|---|
-| `full_load` | **One-time migration** | Every included container is extracted and loaded into Couchbase once | `COMPLETE` after transfer + verification |
-| `cdc_live` | **Continuous replication** | Change-data-capture starts immediately and stays running | `REPLICATING` (ongoing) until stopped |
-| `full_load_and_cdc` | **Bulk copy + continuous sync** | A full load for existing data, then change-data-capture takes over the ongoing delta | `REPLICATING` (ongoing) until stopped |
-
-For a Couchbase source, these three modes map onto Couchbase's own tools instead of the
-generic pipeline: `full_load` runs `cbbackupmgr backup` + `restore`, `cdc_live` starts an XDCR
-replication directly, and `full_load_and_cdc` runs `cbbackupmgr` first and then starts XDCR for
-the ongoing delta -- see "Why Couchbase sources are different" above.
-
-The "Ask the agent" recommendation on the Destination & Mode step
-(`backend/app/core/recommendation.py`) is a fast, deterministic rule engine, not a live LLM
-call -- same rationale as the sibling project: a wizard step on the critical path of setting
-up a migration shouldn't be exposed to LLM latency or a hallucinated recommendation.
 
 ### Source -> Couchbase data modeling
 
