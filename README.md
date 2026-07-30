@@ -6,11 +6,6 @@ or **Couchbase Capella**.
 
 <img width="1470" height="811" alt="image" src="https://github.com/user-attachments/assets/917b19ef-0db2-44f5-9dae-6d6c764b1027" />
 
-
-*Couchbase-to-Couchbase migrations use Couchbase's own native SDK tools -- [`cbbackupmgr`](#connector-implementation-depth) for a one-time full load, XDCR for continuous replication, or both for hybrid.
-
-*MongoDB, Amazon DynamoDB, Redis, Apache Cassandra ad Microsoft Azure Cosmos DB use Connectors on per-document pipeline.
-
 ## Migrations Supported
 - MongoDB (3.6 - 8.0)
 - DynamoDB (SaaS)
@@ -89,6 +84,13 @@ Enterprise Edition memory store -- this can take a few minutes; subsequent start
 > systems, configured per-migration in the wizard -- nothing about them lives in this
 > Docker Compose stack. See the sibling `couchbase-migration-agent`'s README for the
 > Enterprise Free license terms that apply to the `couchbase:enterprise-*` image used here.
+
+## Data Migration Methods
+
+Couchbase-to-Couchbase migrations use Couchbase's own native SDK tools -- [`cbbackupmgr`](#connector-implementation-depth) for a one-time full load, XDCR for continuous replication, or both for hybrid.
+
+MongoDB, Amazon DynamoDB, Redis, Apache Cassandra ad Microsoft Azure Cosmos DB use Connectors on per-document pipeline.
+
 
 ### Connector abstraction
 
