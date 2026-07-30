@@ -1,5 +1,5 @@
 # Couchbase Onboarding Agent
-A Dockerized AI agent with UI for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**, **Apache
+A Dockerized AI agent with UI driven wizard and dashboard for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**, **Apache
 Cassandra**, **Microsoft Azure Cosmos DB**, or another **Couchbase cluster** (**Community
 Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Enterprise Edition)**
 or **Couchbase Capella**.
