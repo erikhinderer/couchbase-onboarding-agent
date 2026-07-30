@@ -9,7 +9,7 @@ Couchbase-to-Couchbase migrations use Couchbase's own native SDK tools -- [`cbba
 
 MongoDB, Amazon DynamoDB, Redis, Apache Cassandra ad Microsoft Azure Cosmos DB use Connectors on per-document pipeline.
 
-## Migrations Supported:
+## Migrations Supported
 - MongoDB (3.6 - 8.0)
 - DynamoDB (SaaS)
 - Redis (5.0+)
