@@ -9,6 +9,16 @@ Couchbase-to-Couchbase migrations use Couchbase's own native SDK tools -- [`cbba
 
 MongoDB, Amazon DynamoDB, Redis, Apache Cassandra ad Microsoft Azure Cosmos DB use Connectors on per-document pipeline.
 
+## Migrations Supported:
+- MongoDB (3.6 - 8.0)
+- DynamoDB (SaaS)
+- Redis (5.0+)
+- Cassandra (2.1 - 4.x)
+- Cosmos DB (SaaS)
+- Couchbase (CE) (7.2 - 8.0.2)
+- Couchbase (EE) (7.2 - 8.0.2)
+- Couchbase (Capella) (SaaS)
+
 ## Couchbase Onboarding Agent AI Capabilities
 
 The agent runs on a local LLM (Qwen, served via an Ollama-compatible API in its own container)
