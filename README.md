@@ -5,7 +5,9 @@ Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Ente
 or **Couchbase Capella**.
 ***
 <img width="1470" height="811" alt="image" src="https://github.com/user-attachments/assets/917b19ef-0db2-44f5-9dae-6d6c764b1027" />
+
 ## Demo Videos
+
 Video: Couchbase Entperise on EC2 to Couchbase Capella migration with XDCR, for a phased migration over time
 
 https://erikhinderer.github.io/couchbase-onboarding-agent/mongodb-atlas_migration-to_couchbase-capella.html
