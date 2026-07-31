@@ -6,9 +6,9 @@ or **Couchbase Capella**.
 
 <img width="1470" height="811" alt="image" src="https://github.com/user-attachments/assets/917b19ef-0db2-44f5-9dae-6d6c764b1027" />
 
-*watch a one-time backup / restore with XDCR for continuous migration demo video: https://erikhinderer.github.io/couchbase-onboarding-agent/mongodb-atlas_migration-to_couchbase-capella.html
+Wwatch a one-time backup / restore with XDCR for continuous migration demo video: https://erikhinderer.github.io/couchbase-onboarding-agent/mongodb-atlas_migration-to_couchbase-capella.html
 
-*watch a MongoDB Atlas to Couchbase Capella demo video: https://erikhinderer.github.io/couchbase-onboarding-agent/mongodb-atlas_migration-to_couchbase-capella.html
+Watch a MongoDB Atlas to Couchbase Capella demo video: https://erikhinderer.github.io/couchbase-onboarding-agent/mongodb-atlas_migration-to_couchbase-capella.html
 
 ## Migrations Supported
 - MongoDB (3.6 - 8.0)
