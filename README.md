@@ -1,8 +1,10 @@
 # Couchbase Onboarding Agent
-A Dockerized AI agent with a UI driven wizard and dashboard for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**, **Apache
+An active Dockerized AI agent with a UI driven wizard and dashboard for migrating **MongoDB**, **Amazon DynamoDB**, **Redis**, **Apache
 Cassandra**, **Microsoft Azure Cosmos DB**, or another **Couchbase cluster** (**Community
 Edition**, **Enterprise Edition**, or **Capella**) into **Couchbase Server (Enterprise Edition)**
 or **Couchbase Capella**.
+
+The Couchbase Onboarding Agent actively monitors migrations and performs **Bottleneck Detection & Auto-throttling**. While a migration is actively running, a monitor watches live throughput and batch outcomes for stalled or degraded transfer rates, source-side rate-limiting (e.g. DynamoDB's provisioned-throughput errors, MongoDB Atlas connection storms), and destination backpressure (elevated Couchbase upsert failures). Source-throttling and destination-backpressure findings are auto-remediated by reducing pipeline concurrency live, with no restart required; stalled or degraded throughput is surfaced as a diagnosis and suggestion, since a concurrency change alone can't fix a dropped connection or a genuine network problem.
 ***
 <img width="1470" height="811" alt="image" src="https://github.com/user-attachments/assets/917b19ef-0db2-44f5-9dae-6d6c764b1027" />
 
@@ -47,7 +49,7 @@ eight source systems.
   to model latency or a hallucinated answer on a step that's on the critical path of setting up a
   migration; the conversational assistant can then explain the reasoning behind it, or the
   tradeoffs of overriding it, in plain language.
-- **Bottleneck detection & auto-throttling.** While a migration is actively running, a monitor
+- **Bottleneck Detection & Auto-throttling.** While a migration is actively running, a monitor
   watches live throughput and batch outcomes for stalled or degraded transfer rates, source-side
   rate-limiting (e.g. DynamoDB's provisioned-throughput errors, MongoDB Atlas connection storms),
   and destination backpressure (elevated Couchbase upsert failures). Source-throttling and
