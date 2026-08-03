@@ -76,7 +76,7 @@ the ongoing delta -- see "Why Couchbase sources are different" above.
 
 The "Ask the agent" recommendation on the Destination & Mode step
 (`backend/app/core/recommendation.py`) is a fast, deterministic rule engine, not a live LLM
-call -- same rationale as the sibling project: a wizard step on the critical path of setting
+call -- a wizard step on the critical path of setting
 up a migration shouldn't be exposed to LLM latency or a hallucinated recommendation.
 
 ## Quick start
@@ -112,8 +112,7 @@ Enterprise Edition memory store -- this can take a few minutes; subsequent start
 > agent's own memory store. Your actual source database (MongoDB/DynamoDB/Redis/
 > Cassandra/Cosmos DB/Couchbase) and destination Couchbase cluster or Capella project are external
 > systems, configured per-migration in the wizard -- nothing about them lives in this
-> Docker Compose stack. See the sibling `couchbase-migration-agent`'s README for the
-> Enterprise Free license terms that apply to the `couchbase:enterprise-*` image used here.
+> Docker Compose stack. See the README for the Enterprise Free license terms that apply to the `couchbase:enterprise-*` image used here.
 
 ## Data Migration Methods
 
@@ -141,39 +140,17 @@ Every source type implements a common `SourceConnector` interface
 `SourceDocument` batches into Couchbase via the Python SDK, one scope/collection per source
 container, with `asyncio`-bounded concurrency that `MigrationEngine`'s bottleneck-detection
 loop can throttle down live in response to destination backpressure or source rate-limiting
--- the direct analogue of the sibling project's cbbackupmgr `--threads` auto-throttle, just
+-- the direct analogue of cbbackupmgr `--threads` auto-throttle, just
 applied to a worker pool this app owns outright instead of a subprocess it launches.
 
-### Why there's no separate backup step
-
-The sibling `couchbase-migration-agent` always takes a full `cbbackupmgr` backup of the
-source *before* touching it, because its migration path (`cbbackupmgr backup` /
-`restore` / XDCR) can and does modify the source's replication topology and is built around
-a tool that can also restore the source from that same archive if something goes wrong.
-
-**Every non-Couchbase connector in this project is strictly read-only against the source.**
-Nothing here ever writes to, deletes from, or reconfigures MongoDB, DynamoDB, Redis, Cassandra,
-or Cosmos DB. That makes a pre-migration backup-and-restore-on-failure step redundant for those
-five sources -- there's nothing to protect the source *from*, and re-running extraction is always
-safe (Couchbase upserts are naturally idempotent). Consequently:
-
-- The wizard has one fewer step than the sibling project's (no "Backup" step between
-  "Validate" and "Review & Approve").
-- **Rollback** means undoing the *destination* side: stop any active change-data-capture and,
-  if requested, delete every document this migration wrote to Couchbase (tagged via each
-  document's `_migration.migration_id` field). The source is never touched, so there is
-  nothing to restore there.
-
-**Couchbase sources are the one deliberate exception to this invariant.** A
-Couchbase-to-Couchbase migration doesn't go through the custom connector/loader pipeline at
-all -- it routes to `backend/app/core/couchbase_native.py`, which shells out to `cbbackupmgr`
-and/or drives XDCR through the source cluster's REST API, the same tools the sibling
-`couchbase-migration-agent` uses. That means, for Couchbase sources only:
+**Couchbase sources use the Couchbase SDK.** A
+Couchbase-to-Couchbase migration routes to `backend/app/core/couchbase_native.py`, which shells out to `cbbackupmgr`
+and/or drives XDCR through the source cluster's REST API.
 
 - **It is not read-only against the source.** `cbbackupmgr backup` reads via the source's own
-  backup mechanism (not a concern), but setting up XDCR *does* modify the source cluster's
+  backup mechanism, but setting up XDCR *does* modify the source cluster's
   replication topology (it creates a remote-cluster reference and a replication on the
-  source), the same tradeoff the sibling project accepts.
+  source).
 - **There's no per-document `_migration` tag and no document-level rollback.** cbbackupmgr and
   XDCR move data at the bucket/collection level, not document-by-document, so verification is
   destination item-count-based rather than tag-based, and "rollback" for a native migration
