@@ -105,7 +105,7 @@ Enterprise Edition memory store -- this can take a few minutes; subsequent start
 | `frontend/` | React + TypeScript + Vite | Dark-mode UI: setup wizard, topology diagram, live stats dashboard, agent chat |
 | `backend/` | FastAPI (Python) + five source SDKs (pymongo, boto3, redis, cassandra-driver, azure-cosmos) + the Couchbase SDK (for the destination and for CE/EE/Capella as a source) + `cbbackupmgr`/XDCR for Couchbase-to-Couchbase moves | REST + WebSocket API, validation, extract/transform/load pipeline, CDC |
 | `qwen-service/` | Ollama serving Qwen 3, 8B | Local LLM for the in-app assistant and memory embeddings -- nothing leaves the Docker network |
-| `couchbase-memory/` | Couchbase Enterprise Edition (free, dev/test license) | Agent long-term memory (past validations, decisions, bottleneck findings), recalled via native vector search |
+| `couchbase-memory/` | Couchbase Enterprise Edition (developer license) | Agent long-term memory (past validations, decisions, bottleneck findings), recalled via native vector search |
 | `scripts/init_memory.py` | Python | One-shot bootstrap: creates the memory bucket/scope/collection and the FTS vector index |
 
 > **`couchbase-memory` is not a migration source or destination.** It's the onboarding
