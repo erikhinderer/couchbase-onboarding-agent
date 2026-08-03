@@ -70,7 +70,7 @@ eight source systems.
 | `full_load_and_cdc` | **Bulk copy + continuous sync** | A full load for existing data, then change-data-capture takes over the ongoing delta | `REPLICATING` (ongoing) until stopped |
 
 For a Couchbase source, these three modes map onto Couchbase's own tools instead of the
-generic pipeline: `full_load` runs `cbbackupmgr backup` + `restore`, `cdc_live` starts an XDCR
+custom pipeline: `full_load` runs `cbbackupmgr backup` + `restore`, `cdc_live` starts an XDCR
 replication directly, and `full_load_and_cdc` runs `cbbackupmgr` first and then starts XDCR for
 the ongoing delta -- see "Why Couchbase sources are different" above.
 
@@ -165,7 +165,7 @@ safe (Couchbase upserts are naturally idempotent). Consequently:
   nothing to restore there.
 
 **Couchbase sources are the one deliberate exception to this invariant.** A
-Couchbase-to-Couchbase migration doesn't go through the generic connector/loader pipeline at
+Couchbase-to-Couchbase migration doesn't go through the custom connector/loader pipeline at
 all -- it routes to `backend/app/core/couchbase_native.py`, which shells out to `cbbackupmgr`
 and/or drives XDCR through the source cluster's REST API, the same tools the sibling
 `couchbase-migration-agent` uses. That means, for Couchbase sources only:
@@ -294,7 +294,7 @@ Those four are **working, but intentionally lighter on edge-case hardening**:
   surface deletes** (Cosmos does offer a newer "All Versions and Deletes" mode on some API
   versions, intentionally not used here to keep one code path working across accounts).
 - **Couchbase Server (Community Edition, Enterprise Edition, or Capella)** -- the one source
-  that **doesn't** follow the generic connector pattern above. `backend/app/core/connectors/couchbase_source.py`
+  that **doesn't** follow the custom connector pattern above. `backend/app/core/connectors/couchbase_source.py`
   only handles introspection: server/cluster version and edition, and per-bucket
   scope/collection listing via the SDK's `collections().get_all_scopes()` (works uniformly
   across all three variants). Its `extract()` is intentionally dead code -- it raises
@@ -499,6 +499,6 @@ interface, not any specific source.
 Enterprise, Capella, all sharing one `CouchbaseSourceConnector`) additionally needs a case in
 `MigrationEngine.run_migration()`'s `COUCHBASE_SOURCE_TYPES` check
 (`backend/app/models/enums.py`) and, if it should support continuous replication, wiring in
-`backend/app/core/couchbase_native.py`'s `XdcrManager` -- it does not go through the generic
+`backend/app/core/couchbase_native.py`'s `XdcrManager` -- it does not go through the custom
 `SourceConnector.extract()`/`stream_changes()` path at all. See "Why Couchbase sources are
 different" above before adding one.
