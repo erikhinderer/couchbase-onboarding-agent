@@ -295,12 +295,11 @@ Those four are **working, but intentionally lighter on edge-case hardening**:
 `backend/app/core/bottleneck_detector.py` watches the extract/load pipeline for stalled or
 degraded throughput, source rate-limiting errors, and Couchbase write backpressure (elevated
 upsert failure rates). Because this pipeline is an `asyncio` worker pool this app owns
-outright (not a subprocess like the sibling project's `cbbackupmgr`), **both** resource-
-pressure bottlenecks *and* the sibling project's thread-count lever have a direct analogue
+outright, **both** resource-
+pressure bottlenecks *and* thread-count lever have a direct analogue
 here: `CouchbaseLoader`'s concurrency can be reduced live, without restarting anything, in
 response to `SOURCE_THROTTLED` or `DEST_BACKPRESSURE` findings. Stalled/degraded throughput
-findings stay diagnosis-and-suggestion only in the Ask The Agent panel, same rationale as the
-sibling project: a concurrency change doesn't fix a dead connection or a real network problem.
+findings stay diagnosis-and-suggestion only in the Ask The Agent panel, same rationale: a concurrency change doesn't fix a dead connection or a real network problem.
 
 ## Wizard flow
 
@@ -337,14 +336,14 @@ sibling project: a concurrency change doesn't fix a dead connection or a real ne
 - **Swapping the LLM**: point `QWEN_BASE_URL` at any Ollama-compatible server; the backend
   only calls `/api/chat` and `/api/embeddings`.
 - **Scaling beyond one API replica**: `MigrationStore` (`backend/app/core/store.py`)
-  persists to a JSON file for simplicity, same as the sibling project. Swap it for a
+  persists to a JSON file for simplicity. Swap it for a
   Couchbase collection or Postgres table if you need multiple backend replicas.
 - **Capella reachability**: Capella requires the backend container's egress IP to be
   allow-listed on the destination cluster (Capella project -> Allowed IPs) and connections
   over `couchbases://`.
 - **Source reachability**: each source database needs to accept connections from this
   agent's egress IP -- security group / firewall / IP allow-list rules per source type, the
-  same operational requirement the sibling project documents for Couchbase source clusters.
+  same operational requirement documents for Couchbase source clusters.
 - **Container-name collisions**: source container names are sanitized into valid Couchbase
   scope/collection names (`sanitize_couchbase_name` in `backend/app/core/couchbase_client.py`);
   the validator's `NAMING_COMPAT` check flags any two source containers that would collide
@@ -420,7 +419,7 @@ Couchbase Web Console (on the *source* cluster) -> XDCR -> click the lingering
 
 ### Troubleshooting a build failure behind a corporate proxy
 
-Same fix as the sibling project -- see its README's "Troubleshooting a build failure behind
+See the README's "Troubleshooting a build failure behind
 a corporate proxy" section. In short:
 
 ```bash
